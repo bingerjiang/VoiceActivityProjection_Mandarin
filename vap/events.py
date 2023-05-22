@@ -850,9 +850,9 @@ if __name__ == "__main__":
         batch_size=2,
         num_workers=1,
         flip_channels=True,
-        flip_probability=0.5,
-        mask_vad=True,
-        mask_vad_probability=1.0,
+        #flip_probability=0.5,
+        #mask_vad=True,
+        #mask_vad_probability=1.0,
     )
     dm.prepare_data()
     dm.setup()
@@ -868,19 +868,19 @@ if __name__ == "__main__":
 
     for batch in dm.val_dataloader():
         events = eventer(batch["vad"][:, :-100])
-        labels, ds_labels = ob.get_labels(batch["vad"], ds_label=True)
+        labels, ds_labels = ob.get_labels(batch["vad"]) #, ds_label=True
         for b in range(2):
             x = torch.arange(batch["vad"].shape[1] - 100) / 50
             plt.close("all")
             fig, ax = plt.subplots(3, 1, sharex=True, figsize=(12, 4))
-            plot_mel_spectrogram(y=batch["waveform"][b], ax=ax)
+            #plot_mel_spectrogram(y=batch["waveform"][b], ax=ax)
             plot_vad(x, batch["vad"][b, :-100, 0], ax=ax[0], ypad=5)
             plot_vad(x, batch["vad"][b, :-100, 1], ax=ax[1], ypad=5)
-            plot_event(events["shift"][b], ax=ax, color="g")
-            plot_event(events["hold"][b], ax=ax, color="b")
-            plot_event(events["short"][b], ax=ax)
-            ax[-1].plot(x, ds_labels[b], linewidth=2)
-            ax[-1].set_ylim([0, 2])
+            #plot_event(events["shift"][b], ax=ax, color="g")
+            #plot_event(events["hold"][b], ax=ax, color="b")
+            #plot_event(events["short"][b], ax=ax)
+            #ax[-1].plot(x, ds_labels[b], linewidth=2)
+            #ax[-1].set_ylim([0, 2])
             # ax[c].axvline(s/50, color='g', linewidth=2)
             # ax[c].axvline(e/50, color='r', linewidth=2)
             plt.tight_layout()

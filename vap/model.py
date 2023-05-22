@@ -6,7 +6,7 @@ from torch import Tensor
 from dataclasses import dataclass, field
 from typing import Dict, Tuple, List, Optional
 
-from vap.encoder import EncoderCPC
+from vap.encoder import EncoderCPC, EncoderWav2vec
 from vap.objective import ObjectiveVAP
 from vap.modules import GPT, GPTStereo
 from vap.utils import (
@@ -14,7 +14,9 @@ from vap.utils import (
     vad_fill_silences,
     vad_omit_spikes,
 )
-
+import soundfile as sf
+import librosa
+import pdb
 
 BIN_TIMES: list = [0.2, 0.4, 0.6, 0.8]
 
@@ -41,6 +43,7 @@ def load_older_state_dict(
 
 @dataclass
 class VapConfig:
+    #sample_rate: int = 16_000
     sample_rate: int = 16_000
     frame_hz: int = 50
     bin_times: List[float] = field(default_factory=lambda: BIN_TIMES)
@@ -48,6 +51,7 @@ class VapConfig:
     # Encoder (training flag)
     freeze_encoder: int = 1  # stupid but works (--vap_freeze_encoder 1)
     load_pretrained: int = 1  # stupid but works (--vap_load_pretrained 1)
+    encoder_type: str = 'wav2vec'
 
     # GPT
     dim: int = 256
@@ -81,6 +85,7 @@ class VapConfig:
 
 @dataclass
 class VapMonoConfig:
+    #sample_rate: int = 16_000
     sample_rate: int = 16_000
     frame_hz: int = 50
     bin_times: List[float] = field(default_factory=lambda: BIN_TIMES)
@@ -128,14 +133,24 @@ class VapGPT(nn.Module):
         if conf is None:
             conf = VapConfig()
         self.conf = conf
-        self.sample_rate = conf.sample_rate
+        #self.sample_rate = conf.sample_rate
         self.frame_hz = conf.frame_hz
 
         # Audio Encoder
-        self.encoder = EncoderCPC(
-            load_pretrained=True if conf.load_pretrained == 1 else False,
-            freeze=conf.freeze_encoder,
-        )
+        from vap.customwav2vec2 import W2V2Transformers
+        self.encoder = W2V2Transformers()
+        # if conf.encoder_type == 'cpc':
+        #     self.encoder = EncoderCPC(
+        #         sample_rate=conf.sample_rate,
+        #         load_pretrained=True if conf.load_pretrained == 1 else False,
+        #         freeze=conf.freeze_encoder,
+        #     )
+        # elif conf.encoder_type == 'wav2vec':
+        #     self.encoder = EncoderWav2vec(
+        #         sample_rate = conf.sample_rate,
+        #         load_pretrained=True if conf.load_pretrained == 1 else False,
+        #         freeze=conf.freeze_encoder,
+        #     )
 
         # Single channel
         self.ar_channel = GPT(
@@ -161,6 +176,12 @@ class VapGPT(nn.Module):
         # Voice activity objective -> x1, x2 -> logits ->  BCE
         self.va_classifier = nn.Linear(conf.dim, 1)
         self.vap_head = nn.Linear(conf.dim, self.objective.n_classes)
+        self.decrease_dimension = nn.Linear(768, 256)
+
+
+        if self.conf.freeze_encoder:
+            print('freeze encoder')
+            self.freeze()
 
     @property
     def horizon_time(self):
@@ -170,13 +191,21 @@ class VapGPT(nn.Module):
         assert (
             audio.shape[1] == 2
         ), f"audio VAP ENCODER: {audio.shape} != (B, 2, n_samples)"
+        #pdb.set_trace()
+        #y, sr = librosa.load(audio)
+        #audio = librosa.resample(y, orig_sr=sr, target_sr=16000)
         x1 = self.encoder(audio[:, :1])  # speaker 1
         x2 = self.encoder(audio[:, 1:])  # speaker 2
         return x1, x2
 
     def vad_loss(self, vad_output, vad):
         return F.binary_cross_entropy_with_logits(vad_output, vad)
-
+    
+    def freeze(self):
+        for p in self.encoder.parameters():
+            
+            p.requires_grad_(False)
+        print(f"Froze {self.__class__.__name__}!")
     @torch.no_grad()
     def probs(
         self,
@@ -248,10 +277,20 @@ class VapGPT(nn.Module):
 
     def forward(self, waveform: Tensor, attention: bool = False) -> Dict[str, Tensor]:
         x1, x2 = self.encode_audio(waveform)
+        #pdb.set_trace()
+
+        ## match dimensions
+        if self.conf.encoder_type == 'wav2vec':
+            x1 = self.decrease_dimension(x1)
+            x1 = torch.relu(x1)
+            x2 = self.decrease_dimension(x2)
+            x2 = torch.relu(x2)
 
         # Autoregressive
-        o1 = self.ar_channel(x1, attention=attention)  # ["x"]
-        o2 = self.ar_channel(x2, attention=attention)  # ["x"]
+        
+        o1 = self.ar_channel(x1, attention=attention) # ["x"]
+        o2 = self.ar_channel(x2, attention=attention)# ["x"]
+        #pdb.set_trace()
         out = self.ar(o1["x"], o2["x"], attention=attention)
 
         # Outputs
@@ -259,6 +298,7 @@ class VapGPT(nn.Module):
         v2 = self.va_classifier(out["x2"])
         vad = torch.cat((v1, v2), dim=-1)
         logits = self.vap_head(out["x"])
+        #pdb.set_trace()
 
         ret = {"logits": logits, "vad": vad}
         if attention:
@@ -274,7 +314,7 @@ class VapGPTMono(nn.Module):
         if conf is None:
             conf = VapMonoConfig()
         self.conf = conf
-        self.sample_rate = conf.sample_rate
+       # self.sample_rate = conf.sample_rate
         self.frame_hz = conf.frame_hz
 
         # Audio Encoder
@@ -429,8 +469,20 @@ if __name__ == "__main__":
         get_vad_list_subset,
     )
     import matplotlib.pyplot as plt
-    from vap_dataset.corpus import SwbReader
+    from vap_dataset.corpus import SwbReader, HKUSTReader
 
+    conf = VapConfig()
+    model = VapGPT(conf)
+    model.eval()
+    
+    wav_path = '/home/binger/repo/vap/VoiceActivityProjection/example/example.wav'
+    wav, sr = sf.read(wav_path)
+    if torch.cuda.is_available():
+        model = model.to("cuda")
+        wav = wav.to("cuda")
+    ret = model(wav)
+    pdb.set_trace()
+#### below: erik's original code ###
     def plot_compare_vad(w, vad, vad2, frame_hz=50, figsize=(12, 8), plot=True):
         fig, ax = plt.subplots(4, 1, figsize=figsize, sharex=True)
 

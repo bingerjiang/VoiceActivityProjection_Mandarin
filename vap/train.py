@@ -447,6 +447,8 @@ class VAPModel(VapGPT, pl.LightningModule):
         # Event Metrics
         if self.event_extractor is not None:
             events = self.event_extractor(batch["vad"])
+            import pdb
+            #pdb.set_trace()
             # probs = self.zero_shot.get_probs(out["logits"], batch["vad"])
             # preds, targets = self.zero_shot.extract_prediction_and_targets(
             #     p=probs["p"], p_bc=probs["p_bc"], events=events

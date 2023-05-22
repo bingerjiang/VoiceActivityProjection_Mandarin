@@ -11,12 +11,12 @@ from pytorch_lightning.strategies.ddp import DDPStrategy
 from vap_dataset.datamodule import VapDataModule
 
 from vap.callbacks import SymmetricSpeakersCallback
-from vap.train import VAPModel, DataConfig, OptConfig
+from vap.train_b2 import VAPModel, DataConfig, OptConfig
 from vap.phrases.dataset import PhrasesCallback
 from vap.utils import everything_deterministic, write_json
 
 # Delete later prolly
-from vap.model import VapGPT, VapConfig
+from vap.model import VapGPT, VapConfig, load_older_state_dict
 from vap.events import TurnTakingEvents, EventConfig
 from vap.zero_shot import ZeroShot
 
@@ -177,7 +177,8 @@ def find_threshold(
         deterministic=True,
         callbacks=[SymmetricSpeakersCallback()],
     )
-    _ = _trainer.test(model, dataloaders=dloader)
+    #_ = _trainer.test(model, dataloaders=dloader)
+    _ = _trainer.validate(model, dataloaders=dloader)
 
     ############################################
     predictions = {}
@@ -254,12 +255,22 @@ def evaluate() -> None:
     #########################################################
     # Load model
     #########################################################
-    model = VAPModel.load_from_checkpoint(args.checkpoint)
+    std = load_older_state_dict(
+        args.checkpoint
+    )
+    conf = VapConfig()
+    #model = VapGPT(conf)
+    model = VAPModel(conf)
+    model.load_state_dict(state_dict=std, strict=False)
+    
+    
+    #model = VAPModel.load_from_checkpoint(args.checkpoint)
 
     #########################################################
     # Load data
     #########################################################
     dconf = configs["data"]
+    
     dm = VapDataModule(
         train_path=dconf.train_path,
         val_path=dconf.val_path,

@@ -35,7 +35,37 @@ def get_audio_info(audio_path: str) -> Dict[str, Any]:
         "encoding": info.encoding,
     }
 
+def load_waveform_hkust(
+    path: str,
+    sample_rate: Optional[int] = 8000,
+    start_time: Optional[float] = None,
+    end_time: Optional[float] = None,
+    mono: bool = False,
+) -> Tuple[torch.Tensor, int]:
+    if start_time is None and end_time is None:
+        x, sr = torchaudio.load(path)
+    else:
+        info = get_audio_info(path)
 
+        start_frame = 0
+        if start_time is not None:
+            start_frame = time_to_samples(start_time, info["sample_rate"])
+        #print(info["sample_rate"])
+        end_frame = info["num_frames"]
+        if end_time is not None:
+            end_frame = time_to_samples(end_time, info["sample_rate"])
+
+        num_frames = end_frame - start_frame
+        x, sr = torchaudio.load(path, frame_offset=start_frame, num_frames=num_frames)
+
+    if mono and x.shape[0] > 1:
+        x = x.mean(dim=0).unsqueeze(0)
+
+    if sample_rate is not None:
+        if sr != sample_rate:
+            x = AF.resample(x, orig_freq=sr, new_freq=sample_rate)
+            sr = sample_rate
+    return x, sr
 def load_waveform(
     path: str,
     sample_rate: Optional[int] = 16000,
@@ -51,7 +81,7 @@ def load_waveform(
         start_frame = 0
         if start_time is not None:
             start_frame = time_to_samples(start_time, info["sample_rate"])
-
+        #print('info sample rate: ' ,info["sample_rate"])
         end_frame = info["num_frames"]
         if end_time is not None:
             end_frame = time_to_samples(end_time, info["sample_rate"])
@@ -64,8 +94,10 @@ def load_waveform(
 
     if sample_rate is not None:
         if sr != sample_rate:
+            #print('sample rate mismatch, resample')
             x = AF.resample(x, orig_freq=sr, new_freq=sample_rate)
             sr = sample_rate
+            #print('sr resampled: ', sr)
     return x, sr
 
 

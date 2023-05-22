@@ -13,7 +13,8 @@ from vap.utils import (
     tensor_dict_to_json,
     write_json,
 )
-from vap.plot_utils import plot_stereo
+from vap.plot_utils import plot_stereo, plot_vad
+from vap.train import VAPModel, DataConfig, OptConfig
 
 
 everything_deterministic()
@@ -200,11 +201,22 @@ if __name__ == "__main__":
         sd = torch.load(args.state_dict)
         model.load_state_dict(sd)
     else:
-        from vap.train import VAPModel
+        #from vap.train import VAPModel
 
-        print("From Lightning checkpoint: ", args.checkpoint)
-        raise NotImplementedError("Not implemeted from checkpoint...")
+        #print("From Lightning checkpoint: ", args.checkpoint)
+        #raise NotImplementedError("Not implemeted from checkpoint...")
         # model = VAPModel.load_from_checkpoint(args.checkpoint)
+
+        ## b2 add
+        std = load_older_state_dict(
+            args.checkpoint
+        )
+        #conf = VapConfig()
+        #model = VAPModel(conf)
+        #model.load_state_dict(state_dict=std, strict=False)
+        model = VapGPT(conf)
+        model.load_state_dict(state_dict=std, strict=False)
+
     device = "cpu"
     if torch.cuda.is_available():
         model = model.to("cuda")
@@ -214,8 +226,10 @@ if __name__ == "__main__":
     ###########################################################
     # Load the Audio
     ###########################################################
-    waveform, _ = load_waveform(args.audio, sample_rate=model.sample_rate)
-    duration = round(waveform.shape[-1] / model.sample_rate)
+    #waveform, _ = load_waveform(args.audio, sample_rate=model.sample_rate)
+    #duration = round(waveform.shape[-1] / model.sample_rate)
+    waveform, _ = load_waveform(args.audio, sample_rate=8000)
+    duration = round(waveform.shape[-1] / 8000)
     if waveform.shape[0] == 1:
         waveform = torch.cat((waveform, torch.zeros_like(waveform)))
     waveform = waveform.unsqueeze(0)
@@ -260,17 +274,19 @@ if __name__ == "__main__":
     write_json(data, args.filename)
     print("wavefile: ", args.audio)
     print("Saved output -> ", args.filename)
-
+    import pdb
+    #pdb.set_trace()
     ###########################################################
     # Plot
     ###########################################################
     if args.plot:
         print(out.keys())
         vad = out["vad"][0].cpu()
-        p_ns = out["p_now"][0, :, 0].cpu()
+        p_ns = out["p_future"][0, :, 0].cpu()
         fig, ax = plot_stereo(
             waveform[0].cpu(), p_ns, vad, plot=False, figsize=(100, 6)
         )
+        plot_vad(torch.arange(len(p_ns)) / 50,vad[:,0],ax[1],color="b", linewidth=3)
         # Save figure
         figpath = args.filename.replace(".json", ".png")
         fig.savefig(figpath)
