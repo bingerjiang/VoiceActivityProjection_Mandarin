@@ -144,6 +144,9 @@ def get_run_name(configs) -> str:
 def train() -> None:
     configs = get_args()
     cfg_dict = configs["cfg_dict"]
+    mixed_precision = True
+    if mixed_precision:
+        cfg_dict['precision'] = 16
 
     pl.seed_everything(cfg_dict["seed"])
     local_rank = environ.get("LOCAL_RANK", 0)
@@ -219,7 +222,7 @@ def train() -> None:
             model.learning_rate = lr_finder.suggestion()
         print("Learning Rate: ", model.opt_conf.learning_rate)
         print("#" * 40)
-
+        #pdb.set_trace()
         # Actual Training
 
         if torch.cuda.is_available():

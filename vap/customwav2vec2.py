@@ -36,23 +36,31 @@ from transformers import Wav2Vec2Model, Wav2Vec2Config
 class W2V2Transformers(torch.nn.Module):
     def __init__(self, name="TencentGameMate/chinese-wav2vec2-base"):
         super().__init__()
-        model = Wav2Vec2Model.from_pretrained(name)
-        #model = Wav2Vec2Model.from_pretrained("facebook/wav2vec2-base-960h")
+        model_type = 'fb'
+        if model_type =='tencent':
+            model = Wav2Vec2Model.from_pretrained(name)
 
-        self.feature_extractor = model.feature_extractor
-        #self.feature_extractor = AutoFeatureExtractor.from_pretrained("facebook/wav2vec2-base-960h")
+            self.feature_extractor = model.feature_extractor
         
-        #processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-large-960h")
+            self.feature_projection = model.feature_projection
 
-        self.feature_projection = model.feature_projection
+            self.pos_conv_embed = model.encoder.pos_conv_embed
+            self.layer_norm = model.encoder.layer_norm
+            self.dropout = model.encoder.dropout
+            self.layers = model.encoder.layers
+            self.decrease_dimension = nn.Linear(768, 256)
+        else:
+            model = Wav2Vec2ForCTC.from_pretrained('facebook/mms-300m')
 
-        # Transformer
-        self.pos_conv_embed = model.encoder.pos_conv_embed
-        self.layer_norm = model.encoder.layer_norm
-        self.dropout = model.encoder.dropout
-        self.layers = model.encoder.layers
-        self.decrease_dimension = nn.Linear(768, 256)
+            self.feature_extractor = model.wav2vec2.feature_extractor
+        
+            self.feature_projection = model.wav2vec2.feature_projection
 
+            self.pos_conv_embed = model.wav2vec2.encoder.pos_conv_embed
+            self.layer_norm = model.wav2vec2.encoder.layer_norm
+            self.dropout = model.wav2vec2.encoder.dropout
+            self.layers = model.wav2vec2.encoder.layers
+            self.decrease_dimension = nn.Linear(768, 256)
 
 
 
@@ -75,6 +83,7 @@ class W2V2Transformers(torch.nn.Module):
         x = x.transpose(1, 2)
         return self.feature_projection(x)
     def encoder(self, hidden_states, causal: bool = True):
+        #pdb.set_trace()
         position_embeddings = self.pos_conv_embed(hidden_states)
         hidden_states = hidden_states + position_embeddings
         hidden_states = self.dropout(hidden_states)

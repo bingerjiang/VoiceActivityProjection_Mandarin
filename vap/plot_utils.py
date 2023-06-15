@@ -214,7 +214,7 @@ def plot_vap(
 
     xx = torch.arange(len(p_now)) / frame_hz
 
-    fig, ax = plt.subplots(n, 1, figsize=figsize, sharex=True)
+    fig, ax = plt.subplots(n, 1, figsize=figsize)
     _ = plot_waveform(waveform=waveform[0], ax=ax[0], label="A")
     _ = plot_waveform(waveform=waveform[1], ax=ax[0], color="orange", label="B")
     ax[0].set_xticks([])
@@ -225,9 +225,8 @@ def plot_vap(
         y=waveform, ax=[ax[1], ax[2]], sample_rate=16000, hop_time=0.01
     )
     if vad is not None:
-        xvad = xx[: vad.shape[0]]
-        plot_vad(xvad, vad[:, 0], ax=ax[1], color="b", linewidth=3)
-        plot_vad(xvad, vad[:, 1], ax=ax[2], color="orange", linewidth=3)
+        plot_vad(xx, vad[:, 0], ax=ax[1], color="b", linewidth=3)
+        plot_vad(xx, vad[:, 1], ax=ax[2], color="orange", linewidth=3)
 
     no_xticks = False
     if p_fut is not None:
@@ -247,8 +246,9 @@ def plot_vap(
         )
         ax[4].legend(loc="lower left", fontsize=16)
 
-    plt.tight_layout()
-    plt.subplots_adjust(left=0.08, hspace=0.04)
+    plt.subplots_adjust(
+        left=0.08, bottom=None, right=None, top=None, wspace=None, hspace=0.04
+    )
     if plot:
         plt.pause(0.1)
     return fig, ax
@@ -323,38 +323,6 @@ def plot_waveform(
     ax.set_ylim([-1, 1])
     ax.set_yticks([])
     ax.set_ylabel("waveform", fontsize=14)
-    return ax
-
-
-def plot_f0(
-    waveform,
-    ax: mpl.axes.Axes,
-    sample_rate: int = 16000,
-    color: str = "b",
-    markersize: int = 3,
-) -> mpl.axes.Axes:
-    assert (
-        waveform.ndim == 1
-    ), f"Expects a single channel waveform (n_samples, ) got {waveform.shape}"
-    f0 = VF.pitch_praat(waveform.cpu(), hop_time=0.1, sample_rate=sample_rate)
-    f0[f0 == 0] = torch.nan
-    x_time = torch.arange(f0.shape[-1]) * 0.1  # hop_time
-    ax.plot(x_time, f0, "o", markersize=markersize, color=color)
-    ymin, ymax = ax.get_ylim()
-    diff = ymax - ymin
-    if diff < 10:
-        ymin -= 5
-        ymax += 5
-        ax.set_ylim([ymin, ymax])
-    ax.set_xlim([0, x_time[-1]])
-    ax.set_ylabel("F0 (Hz)", fontsize=14)
-    ax.yaxis.tick_right()
-    return ax
-
-
-def plot_spectrogram(spec, ax: mpl.axes.Axes):
-    assert spec.ndim == 2, f"Expected spec of shape (Frequency, Time) got {spec.shape}"
-    ax.imshow(spec, aspect="auto", origin="lower", vmin=-1.5, vmax=1.5)
     return ax
 
 
@@ -708,23 +676,19 @@ def plot_sample_mel_spec(
 
 
 def plot_sample_f0(
-    waveform,
-    ax: mpl.axes.Axes,
-    sample_rate: int = 16000,
-    color: str = "b",
-    markersize: int = 3,
+    waveform, ax: mpl.axes.Axes, sample_rate: int = 16000
 ) -> mpl.axes.Axes:
     f0 = VF.pitch_praat(waveform.cpu(), sample_rate=sample_rate)
     f0[f0 == 0] = torch.nan
-    x_time = torch.arange(f0.shape[-1]) / sample_rate
-    ax.plot(x_time, f0, "o", markersize=markersize, color=color)
+    ax.plot(f0, "o", markersize=3, color="b")
     ymin, ymax = ax.get_ylim()
     diff = ymax - ymin
     if diff < 10:
         ymin -= 5
         ymax += 5
         ax.set_ylim([ymin, ymax])
-    ax.set_xlim([0, x_time[-1]])
+    ax.set_xlim([0, len(f0)])
+    ax.set_xticks([])
     ax.set_ylabel("F0 (Hz)", fontsize=14)
     ax.yaxis.tick_right()
     return ax
